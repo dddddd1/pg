@@ -224,6 +224,9 @@ export const useDBStore = create<State>()(
         };
 
         set((state) => {
+          if (!state.databases[connection.name].backupRestoreLogs) {
+            state.databases[connection.name].backupRestoreLogs = [];
+          }
           state.databases[connection.name].backupRestoreLogs.unshift(newLog);
         });
 
@@ -234,6 +237,9 @@ export const useDBStore = create<State>()(
         const connection = get().active!;
 
         set((state) => {
+          if (!state.databases[connection.name].backupRestoreLogs) {
+            return;
+          }
           const log = state.databases[connection.name].backupRestoreLogs.find((l) => l.id === logId);
           if (log) {
             Object.assign(log, updates);
@@ -383,6 +389,10 @@ export const useDBStore = create<State>()(
               },
             ];
             state.databases[name].activeTabId = initialTabId;
+          }
+
+          if (!state.databases[name].backupRestoreLogs) {
+            state.databases[name].backupRestoreLogs = [];
           }
         });
       },
