@@ -1,200 +1,164 @@
 import { useDBStore } from "@/stores";
 import { cn } from "@/utils/classnames";
-import { DataViewer } from "./data-viewer";
-import { Label } from "@/components/ui/label";
-import { toast } from "@/components/ui/sonner";
 import { modal } from "@/components/ui/modals";
-import { OnMount } from "@monaco-editor/react";
+import { QueryTab } from "./query-tab";
 import { Button } from "@/components/ui/button";
-import { CodeEditor } from "@/components/ui/code-editor";
-import { forwardRef, ComponentProps, useRef } from "react";
-import { useIsDesktop } from "@/components/hooks/use-is-desktop";
-import { AllDatabaseSchemaTree } from "@/components/interfaces/schema-tree";
+import { forwardRef, ComponentProps } from "react";
+import * as Tabs from "@radix-ui/react-tabs";
 import {
-  IconReload,
-  IconPlayerPlay,
-  IconTableColumn,
-  IconDotsVertical,
+  IconPlus,
+  IconX,
+  IconDownload,
+  IconSettings,
 } from "@tabler/icons-react";
-import {
-  ResizablePanel,
-  ResizableHandle,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
 import {
   DropdownMenu,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuContent,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/sonner";
+import { BackupRestoreModal } from "../backup-restore/modal";
 
 export const QueryPlayground = forwardRef<
   HTMLDivElement,
   ComponentProps<"div">
 >(({ className, ...props }, ref) => {
-  const isDesktop = useIsDesktop();
+  const tabs = useDBStore((s) => s.databases[s.active!.name].tabs);
+  const activeTabId = useDBStore((s) => s.databases[s.active!.name].activeTabId);
 
-  const editor = useRef<Parameters<OnMount>["0"]>();
+  const createNewTab = () => {
+    useDBStore.getState().createTab();
+  };
 
-  const query = useDBStore((s) => s.databases[s.active!.name].query);
+  const closeTab = (tabId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const db = useDBStore.getState().databases[useDBStore.getState().active!.name];
+    if (db.tabs.length <= 1) {
+      toast.error("cannot close the last tab");
+      return;
+    }
+    useDBStore.getState().closeTab(tabId);
+  };
 
-  const datagrid = useDBStore((s) => s.databases[s.active!.name].datagrid);
+  const switchTab = (tabId: string) => {
+    useDBStore.getState().setActiveTab(tabId);
+  };
 
-  const setQuery = (query: string | undefined) =>
-    useDBStore.setState((s) => {
-      s.databases[s.active!.name].query = query;
+  const openBackupModal = () => {
+    modal.open({
+      title: "Backup Database",
+      children: <BackupRestoreModal type="backup" />,
+      size: "lg",
     });
+  };
 
-  const runAllQuery = () =>
-    query &&
-    useDBStore
-      .getState()
-      .execute(query)
-      .then(() => toast.success("completed", { duration: 500 }))
-      .catch((err) => toast.error((err as Error).message, { duration: 500 }));
+  const openRestoreModal = () => {
+    modal.open({
+      title: "Restore Database",
+      children: <BackupRestoreModal type="restore" />,
+      size: "lg",
+    });
+  };
 
-  const runSelectedQuery = () => {
-    if (!editor.current) return;
-
-    const selection = editor.current.getSelection();
-
-    if (!selection)
-      return toast.error("no selected query to run", { duration: 1000 });
-
-    const query = editor.current.getModel()?.getValueInRange(selection);
-
-    if (!query || query.trim().length === 0)
-      return toast.error("no selected query to run", { duration: 1000 });
-
-    useDBStore
-      .getState()
-      .execute(query)
-      .then(() => toast.success("completed", { duration: 500 }))
-      .catch((err) => toast.error((err as Error).message, { duration: 500 }));
+  const openBackupLogsModal = () => {
+    modal.open({
+      title: "Backup & Restore Logs",
+      children: <BackupRestoreModal type="logs" />,
+      size: "xl",
+    });
   };
 
   return (
     <div
       ref={ref}
       {...props}
-      className={cn("flex size-full flex-1 flex-col p-0", className)}
+      className={cn("flex size-full flex-1 flex-col overflow-hidden", className)}
     >
-      <ResizablePanelGroup
-        direction="horizontal"
-        className="h-full flex-1"
-        autoSaveId="playground-layout"
-      >
-        {isDesktop && (
-          <>
-            <ResizablePanel id="database-schema" defaultSize={20} order={1}>
-              <div className="flex h-full flex-col gap-2 overflow-hidden p-2">
-                <div className="flex flex-row items-center justify-between border-b py-1">
-                  <Label>Schema</Label>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-6"
-                        onClick={() => useDBStore.getState().reload()}
-                      >
-                        <IconReload className="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Reload Schema</TooltipContent>
-                  </Tooltip>
-                </div>
-                <div className="flex-1 overflow-auto">
-                  <AllDatabaseSchemaTree />
-                </div>
-              </div>
-            </ResizablePanel>
-            <ResizableHandle withHandle direction="vertical" />
-          </>
-        )}
-        <ResizablePanel id="main-editor" order={2}>
-          <ResizablePanelGroup direction="vertical">
-            <ResizablePanel id="query-editor" className="flex">
-              <div className="relative flex w-full flex-col gap-y-2 p-2 md:block md:gap-y-0 md:p-0">
-                <div className="flex items-center justify-between gap-2">
-                  {!isDesktop && (
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      className="gap-1 text-xs"
-                      onClick={() =>
-                        modal.open({ children: <AllDatabaseSchemaTree /> })
-                      }
-                    >
-                      <IconTableColumn className="size-4" />
-                      <span>Table</span>
-                    </Button>
+      <div className="flex items-center justify-between border-b bg-muted/50 px-2 py-1">
+        <Tabs.Root
+          value={activeTabId}
+          onValueChange={switchTab}
+          className="flex-1"
+        >
+          <Tabs.List className="flex items-center gap-1 overflow-x-auto">
+            {tabs.map((tab) => (
+              <Tabs.Trigger
+                key={tab.id}
+                value={tab.id}
+                className={cn(
+                  "group flex items-center gap-1.5 rounded-t-lg px-3 py-1.5 text-sm transition-all",
+                  "hover:bg-muted/80",
+                  activeTabId === tab.id
+                    ? "bg-background shadow-sm font-medium"
+                    : "text-muted-foreground"
+                )}
+              >
+                <span className="max-w-[150px] truncate">{tab.name}</span>
+                {tab.isExecuting && (
+                  <span className="h-2 w-2 rounded-full bg-yellow-500 animate-pulse" />
+                )}
+                <button
+                  onClick={(e) => closeTab(tab.id, e)}
+                  className={cn(
+                    "ml-1 rounded p-0.5 opacity-0 transition-opacity",
+                    "hover:bg-destructive/10 hover:text-destructive",
+                    "group-hover:opacity-100"
                   )}
-                  <div className="right-4 bottom-2 z-50 flex items-center gap-0.5 md:absolute">
-                    <Button
-                      size="xs"
-                      onClick={runAllQuery}
-                      className="gap-1 text-xs md:rounded-r-none"
-                      disabled={query == undefined || query.trim().length === 0}
-                    >
-                      <span>Run</span>
-                      <IconPlayerPlay className="size-4" />
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild className="hidden md:flex">
-                        <Button
-                          size="icon"
-                          className="size-7 rounded-l-none"
-                          disabled={query == undefined || !query.trim().length}
-                        >
-                          <IconDotsVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem onClick={runSelectedQuery}>
-                          Run Selection
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-                <CodeEditor
-                  value={query}
-                  language="pgsql"
-                  onChange={setQuery}
-                  className="bg-muted"
-                  defaultLanguage="pgsql"
-                  onMount={(_editor, monaco) => {
-                    editor.current = _editor;
+                >
+                  <IconX className="h-3 w-3" />
+                </button>
+              </Tabs.Trigger>
+            ))}
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              onClick={createNewTab}
+            >
+              <IconPlus className="h-4 w-4" />
+            </Button>
+          </Tabs.List>
+        </Tabs.Root>
 
-                    editor.current.addCommand(
-                      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-                      runSelectedQuery
-                    );
-                  }}
-                  options={{
-                    folding: isDesktop,
-                    lineNumbers: isDesktop ? "on" : "off",
-                  }}
-                />
-              </div>
-            </ResizablePanel>
-            {datagrid && (
-              <>
-                <ResizableHandle withHandle direction="vertical" />
-                <ResizablePanel id="data-viewer" className="flex">
-                  <DataViewer data={datagrid} />
-                </ResizablePanel>
-              </>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="icon" variant="ghost" className="h-8 w-8">
+              <IconSettings className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={openBackupModal}>
+              <IconDownload className="mr-2 h-4 w-4" />
+              <span>Backup Database</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={openRestoreModal}>
+              <IconPlus className="mr-2 h-4 w-4" />
+              <span>Restore Database</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={openBackupLogsModal}>
+              <IconDownload className="mr-2 h-4 w-4" />
+              <span>View Backup Logs</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <div className="flex-1 overflow-hidden">
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            className={cn(
+              "h-full w-full",
+              activeTabId === tab.id ? "block" : "hidden"
             )}
-          </ResizablePanelGroup>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          >
+            <QueryTab tabId={tab.id} />
+          </div>
+        ))}
+      </div>
     </div>
   );
 });
