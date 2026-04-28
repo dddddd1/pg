@@ -18,16 +18,25 @@ import {
 
 interface DataViewerProps extends React.HTMLAttributes<HTMLDivElement> {
   data: DataGridValue<Cell>[];
+  tabId?: string;
 }
 
 export const DataViewer = forwardRef<HTMLDivElement, DataViewerProps>(
-  ({ className, data, ...props }, ref) => {
+  ({ className, data, tabId, ...props }, ref) => {
     /**
      * set last result as active
      */
     const [active, setActive] = useState(data.length > 0 ? data.length - 1 : 0);
 
-    const history = useDBStore((s) => s.databases[s.active!.name]?.history);
+    const history = useDBStore((s) => {
+      if (!s.active) return undefined;
+      const db = s.databases[s.active.name];
+      if (tabId) {
+        const tab = db.tabs.find((t) => t.id === tabId);
+        return tab?.history;
+      }
+      return db.history;
+    });
 
     const lastHistory = history ? history[history.length - 1] : undefined;
 
