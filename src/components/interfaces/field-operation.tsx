@@ -175,7 +175,19 @@ export const FieldOperation: FC<FieldOperationProps> = ({
     return `ALTER TABLE "${schemaName}"."${tableName}" DROP COLUMN "${existingColumn.column}";`;
   };
 
+  const isSystemSchema = (name: string) => {
+    return (
+      name.startsWith("pg_") ||
+      name === "information_schema"
+    );
+  };
+
   const handleSubmit = async () => {
+    if (isSystemSchema(schemaName)) {
+      toast.error("无法对系统表进行字段操作");
+      return;
+    }
+
     if (operation !== "delete" && !validate()) {
       return;
     }
