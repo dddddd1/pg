@@ -26,6 +26,13 @@ import { modal } from "@/components/ui/modals";
 import { FieldOperation } from "@/components/interfaces/field-operation";
 
 const SchemaTree: FC<{ schemas?: DatabaseSchema[] }> = ({ schemas }) => {
+  const isSystemSchema = (schemaName: string) => {
+    return (
+      schemaName.startsWith("pg_") ||
+      schemaName === "information_schema"
+    );
+  };
+
   const openFieldModal = (
     schemaName: string,
     tableName: string,
@@ -93,7 +100,7 @@ const SchemaTree: FC<{ schemas?: DatabaseSchema[] }> = ({ schemas }) => {
                         )}
                         <div className="text-sm">{t.table}</div>
                       </div>
-                      {t.type === "BASE TABLE" && (
+                      {t.type === "BASE TABLE" && !isSystemSchema(schema.schema) && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -138,7 +145,7 @@ const SchemaTree: FC<{ schemas?: DatabaseSchema[] }> = ({ schemas }) => {
                             {!c.nullable && " NOT NULL"}
                           </div>
                         </div>
-                        {t.type === "BASE TABLE" && (
+                        {t.type === "BASE TABLE" && !isSystemSchema(schema.schema) && (
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                             <Button
                               size="icon"
