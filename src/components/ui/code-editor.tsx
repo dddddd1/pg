@@ -1,10 +1,11 @@
-import { FC } from "react";
+import { FC, useEffect, useRef } from "react";
 import { cn } from "@/utils/classnames";
 import { Editor, EditorProps, loader } from "@monaco-editor/react";
 import { useDarkMode } from "../hooks/use-dark-mode";
+import { SyntaxError } from "@/utils/sql-validator";
 
-loader.init().then((monaco) => {
-  monaco.editor.defineTheme("tr-light", {
+loader.init().then((m) => {
+  m.editor.defineTheme("tr-light", {
     base: "vs",
     inherit: true,
     rules: [],
@@ -13,7 +14,7 @@ loader.init().then((monaco) => {
     },
   });
 
-  monaco.editor.defineTheme("tr-dark", {
+  m.editor.defineTheme("tr-dark", {
     base: "vs-dark",
     inherit: true,
     rules: [],
@@ -23,12 +24,41 @@ loader.init().then((monaco) => {
   });
 });
 
-export const CodeEditor: FC<EditorProps> = ({
+interface CodeEditorProps extends EditorProps {
+  validationErrors?: SyntaxError[];
+}
+
+export const CodeEditor: FC<CodeEditorProps> = ({
   options,
   className,
+  validationErrors = [],
   ...props
 }) => {
   const { isDarkMode } = useDarkMode();
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!editorRef.current || !monacoRef.current) return;
+
+    const model = editorRef.current.getModel();
+    if (!model) return;
+
+    const markers: any[] = validationErrors.map((error) => ({
+      startLineNumber: error.line,
+      startColumn: error.column + 1,
+      endLineNumber: error.endLine || error.line,
+      endColumn: error.endColumn || error.column + 10,
+      message: error.message,
+      severity: monacoRef.current.MarkerSeverity.Error,
+    }));
+
+    monacoRef.current.editor.setModelMarkers(model, "sql-validator", markers);
+
+    return () => {
+      monacoRef.current?.editor.setModelMarkers(model, "sql-validator", []);
+    };
+  }, [validationErrors]);
 
   return (
     <Editor
@@ -41,6 +71,11 @@ export const CodeEditor: FC<EditorProps> = ({
           enabled: false,
         },
         ...options,
+      }}
+      onMount={(editor, monacoInstance) => {
+        editorRef.current = editor;
+        monacoRef.current = monacoInstance;
+        props.onMount?.(editor, monacoInstance);
       }}
       {...props}
     />

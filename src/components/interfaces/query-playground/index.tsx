@@ -7,14 +7,16 @@ import { modal } from "@/components/ui/modals";
 import { OnMount } from "@monaco-editor/react";
 import { Button } from "@/components/ui/button";
 import { CodeEditor } from "@/components/ui/code-editor";
-import { forwardRef, ComponentProps, useRef } from "react";
+import { forwardRef, ComponentProps, useRef, useState, useEffect, useCallback } from "react";
 import { useIsDesktop } from "@/components/hooks/use-is-desktop";
 import { AllDatabaseSchemaTree } from "@/components/interfaces/schema-tree";
+import { validateSQL, SyntaxError } from "@/utils/sql-validator";
 import {
   IconReload,
   IconPlayerPlay,
   IconTableColumn,
   IconDotsVertical,
+  IconAlertCircle,
 } from "@tabler/icons-react";
 import {
   ResizablePanel,
@@ -40,15 +42,64 @@ export const QueryPlayground = forwardRef<
   const isDesktop = useIsDesktop();
 
   const editor = useRef<Parameters<OnMount>["0"]>();
+  const validationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const query = useDBStore((s) => s.databases[s.active!.name].query);
 
   const datagrid = useDBStore((s) => s.databases[s.active!.name].datagrid);
 
+  const [validationErrors, setValidationErrors] = useState<SyntaxError[]>([]);
+
   const setQuery = (query: string | undefined) =>
     useDBStore.setState((s) => {
       s.databases[s.active!.name].query = query;
     });
+
+  const validateQuery = useCallback(async (sql: string) => {
+    if (!sql || !sql.trim()) {
+      setValidationErrors([]);
+      return;
+    }
+
+    const connection = useDBStore.getState().active;
+
+    try {
+      const result = await validateSQL(sql, connection?.postgres);
+      setValidationErrors(result.errors);
+    } catch (error) {
+      console.error("Validation error:", error);
+      setValidationErrors([]);
+    }
+  }, []);
+
+  const debouncedValidate = useCallback(
+    (sql: string) => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+      }
+
+      validationTimeoutRef.current = setTimeout(() => {
+        validateQuery(sql);
+      }, 500);
+    },
+    [validateQuery]
+  );
+
+  useEffect(() => {
+    if (query) {
+      debouncedValidate(query);
+    } else {
+      setValidationErrors([]);
+    }
+
+    return () => {
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+      }
+    };
+  }, [query, debouncedValidate]);
+
+  const hasErrors = validationErrors.length > 0;
 
   const runAllQuery = () =>
     query &&
@@ -136,6 +187,25 @@ export const QueryPlayground = forwardRef<
                     </Button>
                   )}
                   <div className="right-4 bottom-2 z-50 flex items-center gap-0.5 md:absolute">
+                    {hasErrors && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-7 text-destructive"
+                          >
+                            <IconAlertCircle className="size-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p className="font-medium">语法错误</p>
+                          <p className="text-sm text-muted-foreground">
+                            {validationErrors[0]?.message}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                     <Button
                       size="xs"
                       onClick={runAllQuery}
@@ -169,6 +239,7 @@ export const QueryPlayground = forwardRef<
                   onChange={setQuery}
                   className="bg-muted"
                   defaultLanguage="pgsql"
+                  validationErrors={validationErrors}
                   onMount={(_editor, monaco) => {
                     editor.current = _editor;
 
